@@ -3,10 +3,65 @@ import { ScoreResult, ScoreDetail } from '../../types';
 /**
  * Analyzes post content for engagement potential
  * Based on X algorithm's prediction of: P(favorite), P(reply), P(repost), P(quote), P(share)
+ * 
+ * Algorithm weights from X source:
+ * - Reply: 13.5x (HIGHEST)
+ * - Profile click: 12x
+ * - URL click: 1.1x
+ * - Retweet: 1.0x
+ * - Favorite: 0.5x
  */
 export function calculateEngagementScore(text: string): ScoreResult {
   const details: ScoreDetail[] = [];
-  let score = 50; // Base score
+  let score = 40; // Start lower - earn your score
+  
+  // Strip URLs to analyze actual content
+  const urls = text.match(/https?:\/\/[^\s]+/g) || [];
+  const textWithoutUrls = text.replace(/https?:\/\/[^\s]+/g, '').trim();
+  const isOnlyLink = urls.length > 0 && textWithoutUrls.length < 10;
+  const isMostlyLink = urls.length > 0 && textWithoutUrls.length < 50;
+
+  // CRITICAL: Link-only posts are terrible
+  if (isOnlyLink) {
+    score = 15;
+    details.push({
+      factor: 'Link-Only Content',
+      impact: 'negative',
+      description: 'No actual content - just a link. This gets heavily demoted.',
+      weight: -35
+    });
+    return {
+      score,
+      grade: 'F',
+      label: 'Engagement Potential',
+      description: 'Likelihood of likes, replies, reposts, and shares',
+      color: '#f4212e',
+      details
+    };
+  }
+
+  if (isMostlyLink) {
+    const penalty = -20;
+    score += penalty;
+    details.push({
+      factor: 'Minimal Content',
+      impact: 'negative',
+      description: `Only ${textWithoutUrls.length} chars besides link. Add context.`,
+      weight: penalty
+    });
+  }
+
+  // External links reduce engagement (people leave platform)
+  if (urls.length > 0) {
+    const penalty = -10;
+    score += penalty;
+    details.push({
+      factor: 'External Link',
+      impact: 'negative',
+      description: 'Links send users off-platform, reducing algorithm score',
+      weight: penalty
+    });
+  }
 
   // 1. Questions boost replies
   const questionCount = (text.match(/\?/g) || []).length;

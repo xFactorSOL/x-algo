@@ -9,8 +9,42 @@ export function calculateReachScore(
   followerCount: number = 1000
 ): ScoreResult {
   const details: ScoreDetail[] = [];
-  let inNetworkScore = 50;
-  let outOfNetworkScore = 50;
+  
+  // Check for link-only content
+  const urls = text.match(/https?:\/\/[^\s]+/g) || [];
+  const textWithoutUrls = text.replace(/https?:\/\/[^\s]+/g, '').trim();
+  const isOnlyLink = urls.length > 0 && textWithoutUrls.length < 10;
+
+  if (isOnlyLink) {
+    return {
+      score: 20,
+      grade: 'F',
+      label: 'Reach Potential',
+      description: 'Estimated visibility to followers vs new audiences',
+      color: '#f4212e',
+      details: [{
+        factor: 'External Link Only',
+        impact: 'negative',
+        description: 'X heavily demotes posts that only link elsewhere. Reach severely limited.',
+        weight: -60
+      }]
+    };
+  }
+
+  // External link penalty (even with content)
+  let linkPenalty = 0;
+  if (urls.length > 0) {
+    linkPenalty = -15;
+    details.push({
+      factor: 'External Link',
+      impact: 'negative',
+      description: 'Linking off-platform reduces algorithmic reach (-15)',
+      weight: linkPenalty
+    });
+  }
+
+  let inNetworkScore = 40 + linkPenalty;
+  let outOfNetworkScore = 40 + linkPenalty;
 
   // === IN-NETWORK FACTORS ===
   

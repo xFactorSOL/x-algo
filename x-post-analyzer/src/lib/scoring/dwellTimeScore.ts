@@ -6,10 +6,32 @@ import { ScoreResult, ScoreDetail } from '../../types';
  */
 export function calculateDwellTimeScore(text: string): ScoreResult {
   const details: ScoreDetail[] = [];
-  let score = 50; // Base score
+  let score = 40; // Start lower - earn it
 
-  const charCount = text.length;
-  const wordCount = text.trim().split(/\s+/).filter(w => w.length > 0).length;
+  // Strip URLs to analyze actual content
+  const urls = text.match(/https?:\/\/[^\s]+/g) || [];
+  const textWithoutUrls = text.replace(/https?:\/\/[^\s]+/g, '').trim();
+  const isOnlyLink = urls.length > 0 && textWithoutUrls.length < 10;
+
+  // Link-only = zero dwell time on your content
+  if (isOnlyLink) {
+    return {
+      score: 10,
+      grade: 'F',
+      label: 'Dwell Time',
+      description: 'How long users will spend reading your post',
+      color: '#f4212e',
+      details: [{
+        factor: 'No Content',
+        impact: 'negative',
+        description: 'Just a link - nothing for users to read',
+        weight: -40
+      }]
+    };
+  }
+
+  const charCount = textWithoutUrls.length || text.length;
+  const wordCount = textWithoutUrls.trim().split(/\s+/).filter(w => w.length > 0).length;
   const lineCount = text.split('\n').filter(l => l.trim().length > 0).length;
 
   // 1. Optimal length analysis (sweet spot: 100-280 characters)

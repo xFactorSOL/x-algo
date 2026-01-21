@@ -83,110 +83,172 @@ function generateSuggestions(
   reach: ReturnType<typeof calculateReachScore>
 ): Suggestion[] {
   const suggestions: Suggestion[] = [];
+  
+  // Strip URLs to analyze actual content
+  const textWithoutUrls = text.replace(/https?:\/\/[^\s]+/g, '').trim();
+  const urls = text.match(/https?:\/\/[^\s]+/g) || [];
+  const isOnlyLink = urls.length > 0 && textWithoutUrls.length < 10;
+  const isMostlyLink = urls.length > 0 && textWithoutUrls.length < 50;
 
-  // Engagement suggestions
-  if (engagement.score < 60) {
-    if (!(text.includes('?'))) {
-      suggestions.push({
-        type: 'improvement',
-        category: 'Engagement',
-        text: 'Add a question to encourage replies and discussion',
-        priority: 'high',
-      });
-    }
-    if (!(/\b(thread|🧵)\b/i.test(text)) && text.length > 200) {
-      suggestions.push({
-        type: 'tip',
-        category: 'Engagement',
-        text: 'Consider making this a thread for better engagement',
-        priority: 'medium',
-      });
-    }
-  }
-
-  // Red flag warnings
-  if (redFlags.score < 70) {
-    const capsRatio = (text.match(/[A-Z]/g) || []).length / Math.max(text.length, 1);
-    if (capsRatio > 0.5) {
-      suggestions.push({
-        type: 'warning',
-        category: 'Red Flags',
-        text: 'Reduce excessive caps - it appears aggressive and may be flagged',
-        priority: 'high',
-      });
-    }
-    const hashtags = text.match(/#\w+/g) || [];
-    if (hashtags.length > 5) {
-      suggestions.push({
-        type: 'warning',
-        category: 'Red Flags',
-        text: `Remove some hashtags (currently ${hashtags.length}). 2-3 is optimal`,
-        priority: 'high',
-      });
-    }
-  }
-
-  // Dwell time suggestions
-  if (dwellTime.score < 60) {
-    if (text.length < 50) {
-      suggestions.push({
-        type: 'improvement',
-        category: 'Dwell Time',
-        text: 'Expand your post - longer content gets more attention (aim for 100-280 chars)',
-        priority: 'medium',
-      });
-    }
-    if (!text.includes('\n') && text.length > 100) {
-      suggestions.push({
-        type: 'tip',
-        category: 'Dwell Time',
-        text: 'Add line breaks to improve readability',
-        priority: 'medium',
-      });
-    }
-  }
-
-  // Author diversity suggestions
-  if (authorDiversity.score < 60) {
+  // CRITICAL: Detect garbage content first
+  if (isOnlyLink) {
     suggestions.push({
       type: 'warning',
-      category: 'Posting Frequency',
-      text: 'You\'ve posted frequently. Space out posts by 3-4 hours for better reach',
+      category: '⛔ Critical Issue',
+      text: 'This is just a link with no context. X heavily demotes link-only posts. Add commentary, opinion, or value.',
+      priority: 'high',
+    });
+    suggestions.push({
+      type: 'improvement',
+      category: 'Algorithm Tip',
+      text: 'The algorithm weights replies at 13.5x - add a question or hot take to spark discussion',
+      priority: 'high',
+    });
+    suggestions.push({
+      type: 'improvement',
+      category: 'Reach',
+      text: 'External links reduce reach by ~80%. Consider: screenshot + context, or quote the key point',
+      priority: 'high',
+    });
+    return suggestions;
+  }
+
+  if (isMostlyLink) {
+    suggestions.push({
+      type: 'warning',
+      category: '⚠️ Low Value',
+      text: 'Post is mostly a link with minimal context. Add your take, a question, or key insight from the content.',
       priority: 'high',
     });
   }
 
-  // Filter risk suggestions
+  // Check for actual content quality
+  const hasQuestion = text.includes('?');
+  const hasOpinion = /\b(i think|i believe|unpopular opinion|hot take|my take|imo|imho)\b/gi.test(text);
+  const hasValue = textWithoutUrls.length >= 100;
+  const hasEngagementHook = /\b(what do you think|thoughts\??|agree\??|disagree\??|change my mind)\b/gi.test(text);
+
+  // No question = missing the biggest algorithm boost
+  if (!hasQuestion) {
+    suggestions.push({
+      type: 'improvement',
+      category: 'Engagement (13.5x weight)',
+      text: 'No question detected. Questions drive replies - the highest weighted signal in the algorithm.',
+      priority: 'high',
+    });
+  }
+
+  // Short content warning
+  if (textWithoutUrls.length < 50 && textWithoutUrls.length > 0) {
+    suggestions.push({
+      type: 'warning',
+      category: 'Content Length',
+      text: `Only ${textWithoutUrls.length} chars of actual content. Aim for 100-280 for optimal dwell time.`,
+      priority: 'high',
+    });
+  }
+
+  // External links warning
+  if (urls.length > 0) {
+    suggestions.push({
+      type: 'warning',
+      category: 'External Link Detected',
+      text: 'Links to external sites reduce reach. X wants users to stay on platform. Add substantial native content.',
+      priority: 'medium',
+    });
+  }
+
+  // No opinion/personality
+  if (!hasOpinion && !hasEngagementHook && textWithoutUrls.length > 20) {
+    suggestions.push({
+      type: 'tip',
+      category: 'Personality',
+      text: 'Add your opinion or perspective. Personal takes outperform neutral sharing.',
+      priority: 'medium',
+    });
+  }
+
+  // Excessive caps
+  const capsRatio = (text.match(/[A-Z]/g) || []).length / Math.max(text.replace(/\s/g, '').length, 1);
+  if (capsRatio > 0.5 && text.length > 20) {
+    suggestions.push({
+      type: 'warning',
+      category: 'Formatting',
+      text: 'Too many caps looks spammy. The algorithm may flag this.',
+      priority: 'high',
+    });
+  }
+
+  // Hashtag analysis
+  const hashtags = text.match(/#\w+/g) || [];
+  if (hashtags.length > 3) {
+    suggestions.push({
+      type: 'warning',
+      category: 'Hashtags',
+      text: `${hashtags.length} hashtags is too many. 1-3 is optimal. More looks spammy.`,
+      priority: 'high',
+    });
+  }
+
+  // Author diversity warning
+  if (authorDiversity.score < 60) {
+    suggestions.push({
+      type: 'warning',
+      category: 'Posting Frequency',
+      text: 'You\'ve posted recently. AuthorDiversityDropper limits same-author posts. Wait 3-4 hours.',
+      priority: 'high',
+    });
+  }
+
+  // Filter risk
   if (filterRisk.score < 70) {
-    if (/\b(crypto|nft|giveaway)\b/gi.test(text)) {
+    const mutedTerms = ['crypto', 'nft', 'web3', 'airdrop', 'giveaway', 'dm me'];
+    const found = mutedTerms.filter(term => text.toLowerCase().includes(term));
+    if (found.length > 0) {
       suggestions.push({
         type: 'warning',
-        category: 'Filter Risk',
-        text: 'Content contains commonly muted terms. Consider rephrasing',
-        priority: 'medium',
+        category: 'Muted Terms',
+        text: `Contains commonly muted terms: ${found.join(', ')}. Many users filter these.`,
+        priority: 'high',
       });
     }
   }
 
-  // Reach suggestions
-  if (reach.score < 60) {
-    const hashtags = text.match(/#\w+/g) || [];
-    if (hashtags.length === 0) {
+  // Positive suggestions only if actually deserved
+  const overallQuality = engagement.score + dwellTime.score + reach.score;
+  if (suggestions.length === 0 && overallQuality > 180 && hasQuestion && hasValue) {
+    suggestions.push({
+      type: 'tip',
+      category: '✓ Strong Post',
+      text: 'Good structure: has a question, substantial content, and engagement hooks.',
+      priority: 'low',
+    });
+  } else if (suggestions.length === 0) {
+    // Default - there's always room to improve
+    if (!hasQuestion) {
       suggestions.push({
-        type: 'improvement',
-        category: 'Reach',
-        text: 'Add 1-3 relevant hashtags to improve discoverability',
+        type: 'tip',
+        category: 'Optimization',
+        text: 'Consider adding a question to maximize the 13.5x reply weight.',
+        priority: 'medium',
+      });
+    }
+    if (!hasEngagementHook) {
+      suggestions.push({
+        type: 'tip',
+        category: 'Optimization',
+        text: 'Add a call-to-action like "thoughts?" or "what do you think?" to boost engagement.',
         priority: 'medium',
       });
     }
   }
 
-  // Positive reinforcement
+  // Always have at least one suggestion
   if (suggestions.length === 0) {
     suggestions.push({
       type: 'tip',
-      category: 'Great Post!',
-      text: 'Your post looks well-optimized for the algorithm. Good job!',
+      category: 'Good Start',
+      text: 'Solid foundation. Consider adding a question or controversial take to maximize algorithm score.',
       priority: 'low',
     });
   }
