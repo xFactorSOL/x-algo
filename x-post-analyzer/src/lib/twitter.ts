@@ -48,11 +48,10 @@ export function buildAuthUrl(
   codeChallenge: string,
   state: string
 ): string {
+  // Minimal scopes - only what we absolutely need
   const scopes = [
     'tweet.read',
-    'users.read',
-    'follows.read',
-    'offline.access'
+    'users.read'
   ].join(' ');
 
   const params = new URLSearchParams({

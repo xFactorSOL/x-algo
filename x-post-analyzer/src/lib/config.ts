@@ -18,10 +18,8 @@ export const X_CONFIG = {
   }
 };
 
-// Scopes we request from X API
+// Scopes we request from X API (minimal set)
 export const X_SCOPES = [
   'tweet.read',      // Read tweets
   'users.read',      // Read user profile
-  'follows.read',    // Read following list
-  'offline.access',  // Refresh tokens
 ];
