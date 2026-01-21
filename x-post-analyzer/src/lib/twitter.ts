@@ -48,11 +48,8 @@ export function buildAuthUrl(
   codeChallenge: string,
   state: string
 ): string {
-  // Minimal scopes - only what we absolutely need
-  const scopes = [
-    'tweet.read',
-    'users.read'
-  ].join(' ');
+  // Only users.read - works on Free tier
+  const scopes = 'users.read';
 
   const params = new URLSearchParams({
     response_type: 'code',
