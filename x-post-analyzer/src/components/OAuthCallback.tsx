@@ -2,15 +2,13 @@ import { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
 import { CheckCircle, XCircle, Loader2 } from 'lucide-react';
 import { 
-  exchangeCodeForToken, 
-  fetchCurrentUser, 
-  fetchUserRecentPosts,
   saveTokens, 
   saveUser, 
   getCodeVerifier,
   clearAuth
 } from '../lib/twitter';
 import { X_CONFIG } from '../lib/config';
+import { User } from '../types';
 
 type CallbackStatus = 'processing' | 'success' | 'error';
 
@@ -31,10 +29,11 @@ export default function OAuthCallback({ onSuccess, onError }: OAuthCallbackProps
         const code = params.get('code');
         const state = params.get('state');
         const error = params.get('error');
+        const errorDescription = params.get('error_description');
 
         // Check for errors from X
         if (error) {
-          throw new Error(`X returned error: ${error}`);
+          throw new Error(errorDescription || `X returned error: ${error}`);
         }
 
         // Validate code exists
@@ -56,42 +55,65 @@ export default function OAuthCallback({ onSuccess, onError }: OAuthCallbackProps
 
         setMessage('Exchanging code for token...');
 
-        // Exchange code for token
-        const tokenResponse = await exchangeCodeForToken(
-          code,
-          X_CONFIG.clientId,
-          X_CONFIG.redirectUri,
-          codeVerifier
-        );
+        // Exchange code for token via our API route (avoids CORS)
+        const tokenResponse = await fetch('/api/auth/token', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            code,
+            code_verifier: codeVerifier,
+            redirect_uri: X_CONFIG.redirectUri,
+          }),
+        });
+
+        const tokenData = await tokenResponse.json();
+
+        if (!tokenResponse.ok) {
+          console.error('Token error:', tokenData);
+          throw new Error(tokenData.error_description || tokenData.error || 'Failed to get access token');
+        }
 
         // Save tokens
-        saveTokens(tokenResponse.access_token, tokenResponse.refresh_token);
+        saveTokens(tokenData.access_token, tokenData.refresh_token);
 
         setMessage('Fetching your profile...');
 
-        // Fetch user profile
-        const user = await fetchCurrentUser(tokenResponse.access_token);
+        // Fetch user profile via our API route
+        const userResponse = await fetch('/api/auth/user', {
+          headers: {
+            'Authorization': `Bearer ${tokenData.access_token}`,
+          },
+        });
 
-        // Fetch recent posts for diversity calculation
-        const recentPosts = await fetchUserRecentPosts(
-          tokenResponse.access_token,
-          user.id
-        );
+        const userData = await userResponse.json();
 
-        // Update user with recent post data
-        user.recentPostsCount = recentPosts.count;
-        if (recentPosts.lastPostTimestamp) {
-          user.lastPostTimestamp = recentPosts.lastPostTimestamp;
+        if (!userResponse.ok) {
+          throw new Error(userData.error || 'Failed to fetch user profile');
         }
+
+        // Build user object
+        const user: User = {
+          id: userData.user.id,
+          username: userData.user.username,
+          name: userData.user.name,
+          profileImageUrl: userData.user.profile_image_url || '',
+          followersCount: userData.user.public_metrics?.followers_count || 0,
+          followingCount: userData.user.public_metrics?.following_count || 0,
+          recentPostsCount: userData.recentPostsCount || 0,
+          lastPostTimestamp: userData.lastPostTimestamp,
+        };
 
         // Save user
         saveUser(user);
 
         // Clean up
         sessionStorage.removeItem('oauth_state');
+        localStorage.removeItem('x_code_verifier');
 
         setStatus('success');
-        setMessage('Successfully connected!');
+        setMessage(`Welcome, ${user.name}!`);
 
         // Redirect to main app after short delay
         setTimeout(() => {
@@ -106,7 +128,7 @@ export default function OAuthCallback({ onSuccess, onError }: OAuthCallbackProps
         
         setTimeout(() => {
           onError(err instanceof Error ? err.message : 'Authentication failed');
-        }, 2000);
+        }, 3000);
       }
     };
 
