@@ -15,6 +15,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const accessToken = authHeader.split(' ')[1];
 
   try {
+    console.log('Fetching user profile with token length:', accessToken.length);
+    
     // Fetch user profile
     const userResponse = await fetch(
       'https://api.twitter.com/2/users/me?user.fields=profile_image_url,public_metrics',
@@ -26,37 +28,45 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     );
 
     const userData = await userResponse.json();
+    
+    console.log('X API user response status:', userResponse.status);
+    console.log('X API user response:', JSON.stringify(userData));
 
     if (!userResponse.ok) {
-      console.error('X API error:', userData);
-      return res.status(userResponse.status).json(userData);
+      return res.status(userResponse.status).json({ error: userData.detail || userData.title || 'Failed to fetch user', details: userData });
     }
 
-    // Fetch recent tweets for diversity calculation
+    // Fetch recent tweets for diversity calculation (skip on free tier - may not have access)
     const userId = userData.data?.id;
     let recentPostsCount = 0;
     let lastPostTimestamp: number | undefined;
 
     if (userId) {
-      const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
-      
-      const tweetsResponse = await fetch(
-        `https://api.twitter.com/2/users/${userId}/tweets?start_time=${oneDayAgo}&max_results=100&tweet.fields=created_at`,
-        {
-          headers: {
-            'Authorization': `Bearer ${accessToken}`,
-          },
-        }
-      );
-
-      if (tweetsResponse.ok) {
-        const tweetsData = await tweetsResponse.json();
-        const tweets = tweetsData.data || [];
-        recentPostsCount = tweets.length;
+      try {
+        const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
         
-        if (tweets.length > 0) {
-          lastPostTimestamp = new Date(tweets[0].created_at).getTime();
+        const tweetsResponse = await fetch(
+          `https://api.twitter.com/2/users/${userId}/tweets?start_time=${oneDayAgo}&max_results=100&tweet.fields=created_at`,
+          {
+            headers: {
+              'Authorization': `Bearer ${accessToken}`,
+            },
+          }
+        );
+
+        if (tweetsResponse.ok) {
+          const tweetsData = await tweetsResponse.json();
+          const tweets = tweetsData.data || [];
+          recentPostsCount = tweets.length;
+          
+          if (tweets.length > 0) {
+            lastPostTimestamp = new Date(tweets[0].created_at).getTime();
+          }
+        } else {
+          console.log('Could not fetch tweets (may be free tier limitation)');
         }
+      } catch (e) {
+        console.log('Tweet fetch failed, continuing without:', e);
       }
     }
 
