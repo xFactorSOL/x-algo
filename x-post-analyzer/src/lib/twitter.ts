@@ -48,8 +48,8 @@ export function buildAuthUrl(
   codeChallenge: string,
   state: string
 ): string {
-  // Only users.read - works on Free tier
-  const scopes = 'users.read';
+  // Full scopes for pay-as-you-go
+  const scopes = ['tweet.read', 'users.read', 'offline.access'].join(' ');
 
   const params = new URLSearchParams({
     response_type: 'code',
