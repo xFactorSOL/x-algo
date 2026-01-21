@@ -31,6 +31,42 @@ export interface Post {
   mentions?: string[];
 }
 
+// Rich post data from X API
+export interface FetchedPost {
+  id: string;
+  text: string;
+  createdAt: string;
+  author: {
+    id: string;
+    name: string;
+    username: string;
+    profileImageUrl: string;
+    verified: boolean;
+    followersCount: number;
+    followingCount: number;
+    tweetCount: number;
+  } | null;
+  metrics: {
+    likeCount: number;
+    retweetCount: number;
+    replyCount: number;
+    quoteCount: number;
+    impressionCount: number;
+    bookmarkCount: number;
+  } | null;
+  entities: {
+    hashtags: string[];
+    mentions: string[];
+    urls: { expanded: string; display: string }[];
+    cashtags: string[];
+  };
+  hasMedia: boolean;
+  mediaTypes: string[];
+  isReply: boolean;
+  isRetweet: boolean;
+  isQuote: boolean;
+}
+
 export interface ScoreResult {
   score: number; // 0-100
   grade: 'A' | 'B' | 'C' | 'D' | 'F';

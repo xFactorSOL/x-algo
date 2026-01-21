@@ -9,7 +9,7 @@ import {
   ChevronRight,
   Zap
 } from 'lucide-react';
-import { User, AuthState, AnalysisResult } from './types';
+import { User, AuthState, AnalysisResult, FetchedPost } from './types';
 import { analyzePost, AnalysisOptions } from './lib/scoring';
 import { 
   getStoredToken, 
@@ -26,6 +26,7 @@ import ScoreCard from './components/ScoreCard';
 import ScoreRing from './components/ScoreRing';
 import PostComposer from './components/PostComposer';
 import PostAnalyzer from './components/PostAnalyzer';
+import PostDisplay from './components/PostDisplay';
 import SuggestionList from './components/SuggestionList';
 import OAuthCallback from './components/OAuthCallback';
 
@@ -46,6 +47,8 @@ function App() {
   const [urlInput, setUrlInput] = useState('');
   const [analysisResult, setAnalysisResult] = useState<AnalysisResult | null>(null);
   const [urlAnalysisResult, setUrlAnalysisResult] = useState<AnalysisResult | null>(null);
+  const [fetchedPost, setFetchedPost] = useState<FetchedPost | null>(null);
+  const [analyzeError, setAnalyzeError] = useState<string | null>(null);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [analysisOptions, setAnalysisOptions] = useState<AnalysisOptions>({
     recentPostCount: 0,
@@ -191,28 +194,57 @@ function App() {
 
     setIsAnalyzing(true);
     setUrlAnalysisResult(null);
+    setFetchedPost(null);
+    setAnalyzeError(null);
 
-    // Simulate fetching post (in real implementation, use X API)
-    await new Promise(resolve => setTimeout(resolve, 1500));
-
-    // For demo, validate URL format (real implementation would fetch from API)
-    if (!extractPostId(urlInput)) {
-      console.log('Invalid URL format, using demo data');
+    // Extract post ID from URL
+    const postId = extractPostId(urlInput);
+    if (!postId) {
+      setAnalyzeError('Invalid X post URL. Please use a URL like https://x.com/user/status/123...');
+      setIsAnalyzing(false);
+      return;
     }
-    
-    // Demo: analyze the URL as if it contains sample text
-    const sampleTexts = [
-      "Just shipped a major update! 🚀\n\nHere's what's new:\n• Faster performance\n• New dark mode\n• Bug fixes\n\nWhat feature would you like to see next?",
-      "Unpopular opinion: the best code is the code you don't write.\n\nSimplicity > Complexity\n\nAgree or disagree?",
-      "BREAKING: We just hit 10,000 users! 🎉\n\nThank you all for the support. This is just the beginning.\n\nThread on what we learned 🧵",
-    ];
-    
-    const randomText = sampleTexts[Math.floor(Math.random() * sampleTexts.length)];
-    const result = analyzePost(randomText, analysisOptions);
-    
-    setUrlAnalysisResult(result);
-    setIsAnalyzing(false);
-  }, [urlInput, analysisOptions]);
+
+    // Check if we have an access token
+    if (!authState.accessToken) {
+      setAnalyzeError('Please connect your X account first');
+      setIsAnalyzing(false);
+      return;
+    }
+
+    try {
+      // Fetch the real post from X API
+      const response = await fetch(`/api/post/fetch?id=${postId}`, {
+        headers: {
+          'Authorization': `Bearer ${authState.accessToken}`,
+        },
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to fetch post');
+      }
+
+      const post: FetchedPost = data.post;
+      setFetchedPost(post);
+
+      // Analyze the post text with enriched options
+      const enrichedOptions: AnalysisOptions = {
+        ...analysisOptions,
+        followerCount: post.author?.followersCount || analysisOptions.followerCount,
+      };
+
+      const result = analyzePost(post.text, enrichedOptions);
+      setUrlAnalysisResult(result);
+
+    } catch (error) {
+      console.error('Failed to analyze post:', error);
+      setAnalyzeError(error instanceof Error ? error.message : 'Failed to fetch post');
+    } finally {
+      setIsAnalyzing(false);
+    }
+  }, [urlInput, analysisOptions, authState.accessToken]);
 
   // Handle OAuth callback
   const handleOAuthSuccess = useCallback(() => {
@@ -458,63 +490,81 @@ function App() {
                   initial={{ opacity: 0, x: 20 }}
                   animate={{ opacity: 1, x: 0 }}
                   exit={{ opacity: 0, x: -20 }}
-                  className="grid grid-cols-1 lg:grid-cols-2 gap-8"
+                  className="space-y-6"
                 >
-                  {/* Left: URL Input */}
-                  <div>
-                    <PostAnalyzer
-                      urlInput={urlInput}
-                      onUrlChange={setUrlInput}
-                      onAnalyze={handleAnalyzeUrl}
-                      isAnalyzing={isAnalyzing}
-                    />
-                    {urlAnalysisResult && (
-                      <div className="mt-6">
-                        <SuggestionList suggestions={urlAnalysisResult.suggestions} />
-                      </div>
-                    )}
-                  </div>
+                  {/* URL Input */}
+                  <PostAnalyzer
+                    urlInput={urlInput}
+                    onUrlChange={setUrlInput}
+                    onAnalyze={handleAnalyzeUrl}
+                    isAnalyzing={isAnalyzing}
+                  />
 
-                  {/* Right: Analysis Results */}
-                  <div>
-                    {isAnalyzing ? (
-                      <div className="glass rounded-2xl p-12 text-center">
-                        <div className="w-16 h-16 border-4 border-x-blue border-t-transparent rounded-full animate-spin mx-auto mb-4" />
-                        <p className="text-x-gray-400">Analyzing post...</p>
-                      </div>
-                    ) : urlAnalysisResult ? (
+                  {/* Error Message */}
+                  {analyzeError && (
+                    <motion.div
+                      initial={{ opacity: 0, y: -10 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      className="bg-red-500/10 border border-red-500/30 rounded-xl p-4 text-red-400"
+                    >
+                      {analyzeError}
+                    </motion.div>
+                  )}
+
+                  {/* Loading State */}
+                  {isAnalyzing && (
+                    <div className="glass rounded-2xl p-12 text-center">
+                      <div className="w-16 h-16 border-4 border-x-blue border-t-transparent rounded-full animate-spin mx-auto mb-4" />
+                      <p className="text-x-gray-400">Fetching post from X...</p>
+                    </div>
+                  )}
+
+                  {/* Fetched Post Display */}
+                  {fetchedPost && !isAnalyzing && (
+                    <PostDisplay post={fetchedPost} />
+                  )}
+
+                  {/* Analysis Results */}
+                  {urlAnalysisResult && !isAnalyzing && (
+                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                      {/* Left: Overall Score + Suggestions */}
                       <div className="space-y-6">
-                        {/* Overall Score */}
                         <motion.div
                           initial={{ opacity: 0, scale: 0.9 }}
                           animate={{ opacity: 1, scale: 1 }}
                           className="glass rounded-2xl p-6 text-center"
                         >
+                          <h3 className="text-sm font-medium text-x-gray-400 mb-4">Algorithm Score</h3>
                           <ScoreRing
                             score={urlAnalysisResult.overallScore}
                             grade={urlAnalysisResult.overallGrade}
-                            size={160}
+                            size={180}
                             label="Overall Score"
                           />
                         </motion.div>
+                        <SuggestionList suggestions={urlAnalysisResult.suggestions} />
+                      </div>
 
-                        {/* Score Cards Grid */}
-                        <div className="grid grid-cols-2 gap-4">
-                          <ScoreCard result={urlAnalysisResult.engagement} delay={0.1} />
-                          <ScoreCard result={urlAnalysisResult.redFlags} delay={0.2} />
-                          <ScoreCard result={urlAnalysisResult.dwellTime} delay={0.3} />
-                          <ScoreCard result={urlAnalysisResult.authorDiversity} delay={0.4} />
-                          <ScoreCard result={urlAnalysisResult.filterRisk} delay={0.5} />
-                          <ScoreCard result={urlAnalysisResult.reach} delay={0.6} />
-                        </div>
+                      {/* Right: Score Cards Grid */}
+                      <div className="grid grid-cols-2 gap-4">
+                        <ScoreCard result={urlAnalysisResult.engagement} delay={0.1} />
+                        <ScoreCard result={urlAnalysisResult.redFlags} delay={0.2} />
+                        <ScoreCard result={urlAnalysisResult.dwellTime} delay={0.3} />
+                        <ScoreCard result={urlAnalysisResult.authorDiversity} delay={0.4} />
+                        <ScoreCard result={urlAnalysisResult.filterRisk} delay={0.5} />
+                        <ScoreCard result={urlAnalysisResult.reach} delay={0.6} />
                       </div>
-                    ) : (
-                      <div className="glass rounded-2xl p-12 text-center">
-                        <Search className="w-16 h-16 text-x-gray-600 mx-auto mb-4" />
-                        <p className="text-x-gray-400">Enter a post URL to analyze</p>
-                      </div>
-                    )}
-                  </div>
+                    </div>
+                  )}
+
+                  {/* Empty State */}
+                  {!fetchedPost && !urlAnalysisResult && !isAnalyzing && !analyzeError && (
+                    <div className="glass rounded-2xl p-12 text-center">
+                      <Search className="w-16 h-16 text-x-gray-600 mx-auto mb-4" />
+                      <p className="text-x-gray-400">Enter a post URL above to analyze it</p>
+                      <p className="text-x-gray-500 text-sm mt-2">We'll fetch the real post and score it against the X algorithm</p>
+                    </div>
+                  )}
                 </motion.div>
               )}
             </AnimatePresence>
