@@ -28,6 +28,7 @@ import PostComposer from './components/PostComposer';
 import PostAnalyzer from './components/PostAnalyzer';
 import PostDisplay from './components/PostDisplay';
 import SuggestionList from './components/SuggestionList';
+import DeepAnalysis from './components/DeepAnalysis';
 import OAuthCallback from './components/OAuthCallback';
 
 type Tab = 'composer' | 'analyzer';
@@ -428,61 +429,88 @@ function App() {
                   initial={{ opacity: 0, x: -20 }}
                   animate={{ opacity: 1, x: 0 }}
                   exit={{ opacity: 0, x: 20 }}
-                  className="grid grid-cols-1 lg:grid-cols-2 gap-8"
+                  className="space-y-6"
                 >
-                  {/* Left: Composer */}
-                  <div>
-                    <PostComposer
-                      value={postText}
-                      onChange={setPostText}
-                      user={authState.user}
-                    />
-                    {analysisResult && (
-                      <div className="mt-6">
-                        <SuggestionList suggestions={analysisResult.suggestions} />
-                      </div>
-                    )}
-                  </div>
+                  {/* Top Row: Composer + Overall Score */}
+                  <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                    {/* Composer - Takes 2 columns */}
+                    <div className="lg:col-span-2">
+                      <PostComposer
+                        value={postText}
+                        onChange={setPostText}
+                        user={authState.user}
+                      />
+                    </div>
 
-                  {/* Right: Live Scores */}
-                  <div>
-                    {analysisResult ? (
-                      <div className="space-y-6">
-                        {/* Overall Score */}
+                    {/* Overall Score */}
+                    <div>
+                      {analysisResult ? (
                         <motion.div
                           initial={{ opacity: 0, scale: 0.9 }}
                           animate={{ opacity: 1, scale: 1 }}
-                          className="glass rounded-2xl p-6 text-center"
+                          className="glass rounded-2xl p-6 text-center h-full flex flex-col justify-center"
                         >
                           <div className="flex items-center justify-center gap-2 mb-4">
                             <div className="w-2 h-2 bg-x-green rounded-full live-pulse" />
-                            <span className="text-sm text-x-gray-400">Live Analysis</span>
+                            <span className="text-sm text-x-gray-400">Live Algorithm Score</span>
                           </div>
                           <ScoreRing
                             score={analysisResult.overallScore}
                             grade={analysisResult.overallGrade}
-                            size={160}
-                            label="Overall Score"
+                            size={140}
+                            label="Algorithm Score"
                           />
+                          <p className="text-xs text-x-gray-500 mt-4">
+                            Based on X's open-source algorithm
+                          </p>
                         </motion.div>
+                      ) : (
+                        <div className="glass rounded-2xl p-8 text-center h-full flex flex-col items-center justify-center">
+                          <PenLine className="w-12 h-12 text-x-gray-600 mb-3" />
+                          <p className="text-x-gray-400 text-sm">Start typing to see your algorithm score</p>
+                        </div>
+                      )}
+                    </div>
+                  </div>
 
-                        {/* Score Cards Grid */}
-                        <div className="grid grid-cols-2 gap-4">
-                          <ScoreCard result={analysisResult.engagement} delay={0.1} />
-                          <ScoreCard result={analysisResult.redFlags} delay={0.2} />
-                          <ScoreCard result={analysisResult.dwellTime} delay={0.3} />
-                          <ScoreCard result={analysisResult.authorDiversity} delay={0.4} />
-                          <ScoreCard result={analysisResult.filterRisk} delay={0.5} />
-                          <ScoreCard result={analysisResult.reach} delay={0.6} />
+                  {/* Deep Algorithm Analysis */}
+                  {postText.trim() ? (
+                    <DeepAnalysis 
+                      text={postText}
+                      recentPostCount={analysisOptions.recentPostCount}
+                      hoursSinceLastPost={analysisOptions.hoursSinceLastPost}
+                    />
+                  ) : (
+                    <div className="glass rounded-2xl p-8 text-center">
+                      <h3 className="text-lg font-semibold text-white mb-2">Deep Algorithm Analysis</h3>
+                      <p className="text-x-gray-400">
+                        Type or paste your draft above to see a detailed breakdown of how the X algorithm will score your post.
+                      </p>
+                      <div className="mt-4 grid grid-cols-2 sm:grid-cols-4 gap-4 text-xs text-x-gray-500">
+                        <div className="p-3 bg-x-gray-800/50 rounded-lg">
+                          <div className="text-x-blue font-bold text-lg">13.5x</div>
+                          <div>Reply Weight</div>
+                        </div>
+                        <div className="p-3 bg-x-gray-800/50 rounded-lg">
+                          <div className="text-purple-400 font-bold text-lg">12x</div>
+                          <div>Profile Click</div>
+                        </div>
+                        <div className="p-3 bg-x-gray-800/50 rounded-lg">
+                          <div className="text-x-green font-bold text-lg">1x</div>
+                          <div>Repost Weight</div>
+                        </div>
+                        <div className="p-3 bg-x-gray-800/50 rounded-lg">
+                          <div className="text-pink-500 font-bold text-lg">0.5x</div>
+                          <div>Like Weight</div>
                         </div>
                       </div>
-                    ) : (
-                      <div className="glass rounded-2xl p-12 text-center">
-                        <PenLine className="w-16 h-16 text-x-gray-600 mx-auto mb-4" />
-                        <p className="text-x-gray-400">Start typing to see live analysis</p>
-                      </div>
-                    )}
-                  </div>
+                    </div>
+                  )}
+
+                  {/* Suggestions */}
+                  {analysisResult && (
+                    <SuggestionList suggestions={analysisResult.suggestions} />
+                  )}
                 </motion.div>
               ) : (
                 <motion.div
